@@ -216,7 +216,37 @@ document.addEventListener('mousemove', () => {
   cursorTimeout = setTimeout(hideCursor, 2000); // 2000 milisegundos = 2 segundos
 });
 
+// === Desplazamiento táctil (swipe) ===
+let touchStartX = 0;
+let touchStartY = 0;
+
+document.addEventListener("touchstart", e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, false);
+
+document.addEventListener("touchend", e => {
+  const touchEndX = e.changedTouches[0].clientX;
+  const touchEndY = e.changedTouches[0].clientY;
+
+  const diffX = touchEndX - touchStartX;
+  const diffY = touchEndY - touchStartY;
+
+  const threshold = 50; // distancia mínima para considerar swipe
+
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    // movimiento horizontal
+    if (diffX > threshold) go("left");
+    else if (diffX < -threshold) go("right");
+  } else {
+    // movimiento vertical
+    if (diffY > threshold) go("up");
+    else if (diffY < -threshold) go("down");
+  }
+}, false);
+  
 </script>
 
 </body>
 </html>
+
