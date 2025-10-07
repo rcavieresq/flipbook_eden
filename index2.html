@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Flipbook Espacial No Lineal con Minimapa</title>
+<style>
+  body {
+    margin: 0;
+    background: #000;
+    height: 100vh;
+    overflow: hidden;
+    font-family: sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  #viewport {
+    width: 100vw;
+    height: 100vh;
+    background: #000000;
+    overflow: hidden;
+    position: relative;
+    border-radius: 10px;
+  }
+
+  #world {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+  }
+
+  body.loaded #world {
+    opacity: 1;
+  }
+
+  #world.transitioning {
+  transition: transform 0.8s cubic-bezier(0.75, 0, 0.25, 1); 
+  }
+
+  .page {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #000000;
+  }
+
+  .page img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  /* Flechas */
+  .arrow {
+    position: absolute;
+    font-size: 50px;
+    /*color: rgba(255,255,255,0.6);*/
+    color: rgba(255, 0, 0, 0.6);
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.3s;
+    z-index: 10;
+  }
+  .arrow:hover { color: white; }
+  .arrow.disabled { opacity: 0.2; pointer-events: none; }
+
+  .arrow.left { left: 30px; top: 50%; transform: translateY(-50%); }
+  .arrow.right { right: 30px; top: 50%; transform: translateY(-50%); }
+  .arrow.up { top: -5px; left: 50%; transform: translateX(-50%); }
+  .arrow.down { bottom: -5px; left: 50%; transform: translateX(-50%); }
+
+  /* === MINIMAPA === */
+    #minimap {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        width: 160px;
+        height: 160px;
+        background: rgba(20,20,20,0.8);
+        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 6px;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    #minimap.hidden {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+    }
+
+  #minimap svg {
+    width: 90%;
+    height: 90%;
+  }
+
+  .map-node {
+    fill: rgba(255,255,255,0.3);
+    stroke: rgba(255,255,255,0.1);
+    stroke-width: 0.5;
+    transition: fill 0.3s, r 0.3s;
+  }
+
+  .map-node.active {
+    fill: #fff;
+    r: 0.5;
+  }
+
+#musicControls {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  z-index: 30;
+}
+
+#musicControls.hidden {
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
+}
+
+#musicControls button {
+  font-size: 18px;
+  cursor: pointer;
+}
+
+body.cursor-hidden {
+  cursor: none;
+}
+
+</style>
+</head>
+<body>
+
+<div id="viewport">
+
+    <audio id="bgMusic" loop>
+        <source src="music/audio.mp4" type="audio/mpeg">
+        Tu navegador no soporta audio.
+    </audio>
+    <div id="musicControls" class="hidden">
+        <button id="playPause">▶️</button>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.18">
+    </div>
+
+  <div id="world"></div>
+
+  <div class="arrow up">&#9650;</div>
+  <div class="arrow down">&#9660;</div>
+  <div class="arrow left">&#9664;</div>
+  <div class="arrow right">&#9654;</div>
+
+  <!-- 🔍 Mini Mapa -->
+  <div id="minimap" class="hidden">
+    <svg viewBox="0 0 4 10" id="mapSvg"></svg>
+  </div>
+</div>
+
+<script>
+/* --- Mapa Espacial --- */
+const pages = {
+  1: { img: "pages/page-00.jpg", right: 2, left: 19, pos:[0,0] },
+  2: { img: "pages/page-01.jpg", right: 3, left: 1, pos:[1,0] },
+  3: { img: "pages/page-02.jpg", left: 2, right: 4, pos:[2,0] },
+  4: { img: "pages/page-03.jpg", left: 3, down: 5, pos:[3,0] },
+  5: { img: "pages/page-04.jpg", up: 4, down: 6, pos:[3,1] },
+  6: { img: "pages/page-05.jpg", up: 5, down: 7, pos:[3,2] },
+  7: { img: "pages/page-06.jpg", left: 8, up: 6, pos:[3,3] },
+  8: { img: "pages/page-07.jpg", right: 7, left: 9, pos:[2,3] },
+  9: { img: "pages/page-08.jpg", left: 10, right: 8, pos:[1,3] },
+  10: { img: "pages/page-09.jpg", right: 9, down: 11, pos:[0,3] },
+  11:{ img: "pages/page-10.jpg", up: 10, down: 12, pos:[0,4] },
+  12:{ img: "pages/page-11.jpg", up: 11, down: 13, pos:[0,5] },
+  13:{ img: "pages/page-12.jpg", up: 12, right: 14, pos:[0,6] },
+  14:{ img: "pages/page-13.jpg", left: 13, right: 15, pos:[1,6] },
+  15:{ img: "pages/page-14.jpg", left: 14, right: 16, pos:[2,6] },
+  16:{ img: "pages/page-15.jpg", left: 15, down: 17, pos:[3,6] },
+  17:{ img: "pages/page-16.jpg", up: 16, down: 18, pos:[3,7] },
+  18:{ img: "pages/page-17.jpg", up: 17, down: 19, pos:[3,8] },
+  19:{ img: "pages/page-18.jpg", up: 18, right: 1, pos:[3,9] },
+};
+
+const world = document.getElementById("world");
+const mapSvg = document.getElementById("mapSvg");
+
+const arrows = {
+  up: document.querySelector(".arrow.up"),
+  down: document.querySelector(".arrow.down"),
+  left: document.querySelector(".arrow.left"),
+  right: document.querySelector(".arrow.right")
+};
+
+const worldCols = 4;
+const worldRows = 10;
+
+world.style.gridTemplateColumns = `repeat(${worldCols}, 100vw)`;
+world.style.gridTemplateRows = `repeat(${worldRows}, 100vh)`;
+
+// Crear páginas
+for (let i in pages) {
+  const div = document.createElement("div");
+  div.className = "page";
+  div.style.gridColumnStart = pages[i].pos[0] + 1;
+  div.style.gridRowStart = pages[i].pos[1] + 1;
+  const img = document.createElement("img");
+  img.src = pages[i].img;
+  div.appendChild(img);
+  world.appendChild(div);
+}
+
+// Crear nodos del minimapa
+for (let i in pages) {
+  const [x, y] = pages[i].pos;
+  const node = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  node.setAttribute("cx", x + 0.5);
+  node.setAttribute("cy", y + 0.5);
+  node.setAttribute("r", 0.4);
+  node.classList.add("map-node");
+  node.id = `node-${i}`;
+  mapSvg.appendChild(node);
+}
+
+const totalPages = Object.keys(pages).length;
+let currentPage = Math.floor(Math.random() * totalPages) + 1;
+let currentPos = pages[currentPage].pos;
+
+function go(dir) {
+  const target = pages[currentPage][dir];
+  if (!target) return;
+  currentPage = target;
+  currentPos = pages[target].pos;
+  updateWorld();
+}
+
+function updateWorld() {
+  const [x, y] = currentPos;
+  world.style.transform = `translate(${-x * 100}vw, ${-y * 100}vh)`;
+  updateArrows();
+  updateMiniMap();
+}
+
+function updateArrows() {
+  for (let dir in arrows) {
+    if (pages[currentPage][dir]) arrows[dir].classList.remove("disabled");
+    else arrows[dir].classList.add("disabled");
+  }
+}
+
+function updateMiniMap() {
+  document.querySelectorAll(".map-node").forEach(n => n.classList.remove("active"));
+  document.getElementById(`node-${currentPage}`).classList.add("active");
+}
+
+updateWorld();
+
+// Navegación
+for (let dir in arrows) arrows[dir].addEventListener("click", () => go(dir));
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowUp") go("up");
+  if (e.key === "ArrowDown") go("down");
+  if (e.key === "ArrowLeft") go("left");
+  if (e.key === "ArrowRight") go("right");
+});
+
+// === Mostrar / Ocultar minimapa con tecla M ===
+const minimap = document.getElementById("minimap");
+let minimapVisible = false;
+
+document.addEventListener("keydown", e => {
+  if (e.key.toLowerCase() === "m") {
+    minimapVisible = !minimapVisible;
+    minimap.classList.toggle("hidden", !minimapVisible);
+  }
+});
+
+const bgMusic = document.getElementById("bgMusic");
+const musicControls = document.getElementById("musicControls");
+const playPauseBtn = document.getElementById("playPause");
+const volumeSlider = document.getElementById("volume");
+
+let musicVisible = false;
+let musicStarted = false; // Para que solo arranque una vez
+
+// Volumen inicial 18%
+bgMusic.volume = 0.18;
+
+document.addEventListener("keydown", e => {
+  // Iniciar música en la primera interacción con flechas
+  if (!musicStarted && ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+    bgMusic.play().catch(err => console.log("Error al iniciar música:", err));
+    musicStarted = true;
+    playPauseBtn.textContent = "⏸️"; // opcional, si los controles ya están visibles
+  }
+});
+
+// Mostrar / ocultar controles con tecla i
+document.addEventListener("keydown", e => {
+  if (e.key.toLowerCase() === "i") {
+    musicVisible = !musicVisible;
+    musicControls.classList.toggle("hidden", !musicVisible);
+  }
+});
+
+// Play / Pause
+playPauseBtn.addEventListener("click", () => {
+  if (bgMusic.paused) {
+    bgMusic.play();
+    playPauseBtn.textContent = "⏸️";
+  } else {
+    bgMusic.pause();
+    playPauseBtn.textContent = "▶️";
+  }
+});
+
+// Volumen
+volumeSlider.addEventListener("input", () => {
+  bgMusic.volume = volumeSlider.value;
+});
+
+window.addEventListener("load", () => {
+  // Efecto de aparición inicial
+  document.body.classList.add("loaded");
+
+  // Activa las transiciones del mundo solo después del fundido inicial
+  setTimeout(() => {
+    world.classList.add("transitioning");
+  }, 1200); // 1.2 segundos = duración del fade
+});
+
+// === Ocultar cursor por inactividad ===
+let cursorTimeout;
+
+// Esta función se ejecuta para ocultar el cursor
+function hideCursor() {
+    document.body.classList.add('cursor-hidden');
+}
+
+// Inicia el temporizador la primera vez
+cursorTimeout = setTimeout(hideCursor, 2000); // Oculta el cursor 2 segundos después de cargar
+
+// Escucha cualquier movimiento del mouse en el documento
+document.addEventListener('mousemove', () => {
+  // 1. Muestra el cursor de nuevo
+  document.body.classList.remove('cursor-hidden');
+  
+  // 2. Limpia el temporizador anterior para que no se ejecute
+  clearTimeout(cursorTimeout);
+  
+  // 3. Inicia un nuevo temporizador. Si no hay más movimiento en 2 segundos, se ocultará.
+  cursorTimeout = setTimeout(hideCursor, 2000); // 2000 milisegundos = 2 segundos
+});
+
+
+</script>
+
+</body>
+</html>
