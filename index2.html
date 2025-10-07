@@ -268,14 +268,29 @@ function updateMiniMap() {
 
 updateWorld();
 
-// Navegación
-for (let dir in arrows) arrows[dir].addEventListener("click", () => go(dir));
+// Navegación + detección de primera interacción
+for (let dir in arrows) {
+  arrows[dir].addEventListener("click", () => {
+    go(dir);
+
+    // Primera interacción también cuenta con clic
+    if (!musicStarted) {
+      bgMusic.play().catch(err => console.log("Error al iniciar música:", err));
+      fadeIn(bgMusic, volumeSlider.value, 2000);
+      musicStarted = true;
+      playPauseBtn.textContent = "⏸️";
+    }
+  });
+}
+
+
 document.addEventListener("keydown", e => {
   if (e.key === "ArrowUp") go("up");
   if (e.key === "ArrowDown") go("down");
   if (e.key === "ArrowLeft") go("left");
   if (e.key === "ArrowRight") go("right");
 });
+
 
 // === Mostrar / Ocultar minimapa con tecla M ===
 const minimap = document.getElementById("minimap");
@@ -299,10 +314,37 @@ let musicStarted = false; // Para que solo arranque una vez
 // Volumen inicial 18%
 bgMusic.volume = 0.18;
 
+// === Fade in / Fade out ===
+function fadeIn(audio, targetVolume = 0.18, duration = 2000) {
+  audio.volume = 0;
+  audio.play();
+  const step = targetVolume / (duration / 50);
+  const fadeInterval = setInterval(() => {
+    if (audio.volume < targetVolume) {
+      audio.volume = Math.min(targetVolume, audio.volume + step);
+    } else {
+      clearInterval(fadeInterval);
+    }
+  }, 50);
+}
+
+function fadeOut(audio, duration = 2000) {
+  const step = audio.volume / (duration / 50);
+  const fadeInterval = setInterval(() => {
+    if (audio.volume > 0.01) {
+      audio.volume = Math.max(0, audio.volume - step);
+    } else {
+      clearInterval(fadeInterval);
+      audio.pause();
+    }
+  }, 50);
+}
+
 document.addEventListener("keydown", e => {
   // Iniciar música en la primera interacción con flechas
   if (!musicStarted && ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
     bgMusic.play().catch(err => console.log("Error al iniciar música:", err));
+    fadeIn(bgMusic, volumeSlider.value, 2000);
     musicStarted = true;
     playPauseBtn.textContent = "⏸️"; // opcional, si los controles ya están visibles
   }
@@ -319,10 +361,10 @@ document.addEventListener("keydown", e => {
 // Play / Pause
 playPauseBtn.addEventListener("click", () => {
   if (bgMusic.paused) {
-    bgMusic.play();
+    fadeIn(bgMusic, volumeSlider.value, 2000); // fade in de 2s
     playPauseBtn.textContent = "⏸️";
   } else {
-    bgMusic.pause();
+    fadeOut(bgMusic, 2000); // fade out de 2s
     playPauseBtn.textContent = "▶️";
   }
 });
@@ -365,6 +407,43 @@ document.addEventListener('mousemove', () => {
   cursorTimeout = setTimeout(hideCursor, 2000); // 2000 milisegundos = 2 segundos
 });
 
+
+// === Desplazamiento táctil (swipe) ===
+let touchStartX = 0;
+let touchStartY = 0;
+
+document.addEventListener("touchstart", e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, false);
+
+document.addEventListener("touchend", e => {
+  const touchEndX = e.changedTouches[0].clientX;
+  const touchEndY = e.changedTouches[0].clientY;
+
+  const diffX = touchEndX - touchStartX;
+  const diffY = touchEndY - touchStartY;
+
+  const threshold = 50; // distancia mínima para considerar swipe
+
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    // movimiento horizontal
+    if (diffX > threshold) go("left");
+    else if (diffX < -threshold) go("right");
+  } else {
+    // movimiento vertical
+    if (diffY > threshold) go("up");
+    else if (diffY < -threshold) go("down");
+  }
+
+  // primera interacción con pantalla táctil también inicia música
+  if (!musicStarted) {
+    bgMusic.play().catch(err => console.log("Error al iniciar música:", err));
+    fadeIn(bgMusic, volumeSlider.value, 2000);
+    musicStarted = true;
+    playPauseBtn.textContent = "⏸️";
+  }
+}, false);
 
 </script>
 
